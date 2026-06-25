@@ -11,15 +11,14 @@
 
 ## ▶️ कैसे चलाएं (Locally)
 
-### Step 1 — MongoDB चालू करो
+### Step 1 — MongoDB
 ```bash
 mongod
-```
-> अगर MongoDB install नहीं है: https://www.mongodb.com/try/download/community
+``
 
 ---
 
-### Step 2 — Backend चालू करो
+### Step 2 — Backend 
 ```bash
 cd backend
 npm install
@@ -29,7 +28,7 @@ npm run dev
 
 ---
 
-### Step 3 — Frontend चालू करो
+### Step 3 — Frontend 
 ```bash
 cd frontend
 npm install
@@ -39,15 +38,15 @@ npm start
 
 ---
 
-## 🔁 CRUD Operations (क्या-क्या होता है)
+## 🔁 CRUD Operations ()
 
-| Operation | Route              | काम                     |
-|-----------|--------------------|--------------------------|
-| Create    | POST   /notes      | नया note बनाओ           |
-| Read All  | GET    /notes      | सभी notes लाओ           |
-| Read One  | GET    /notes/:id  | एक note लाओ             |
-| Update    | PUT    /notes/:id  | note बदलो               |
-| Delete    | DELETE /notes/:id  | note हटाओ               |
+| Operation | Route              | Work                    |
+|-----------|--------------------|-------------------------|
+| Create    | POST   /notes      | New note create         |
+| Read All  | GET    /notes      | get all notes           |
+| Read One  | GET    /notes/:id  | get  one note           |
+| Update    | PUT    /notes/:id  | note update             |
+| Delete    | DELETE /notes/:id  | note delete             |
 
 ---
 
