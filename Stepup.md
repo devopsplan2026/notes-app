@@ -53,3 +53,143 @@ npm install
 npm start
 
 Check: http://localhost:3000
+
+
+
+Database testing :
+
+Certainly! Here's a complete, step-by-step set of commands to start from scratch with MongoDB, set up your database, and perform basic operations:
+
+
+
+1. Start MongoDB Service
+
+```bash
+ systemctl start mongod
+```
+
+2. Open Mongo Shell
+
+```bash
+mongosh
+```
+
+3. Create or Switch to Your Database
+
+```js
+// List existing databases
+show dbs
+
+// Switch to your database (creates it if it doesn't exist)
+use notepad
+```
+
+4. Create a Collection (if not already created)
+
+```js
+// Create 'notes' collection
+db.createCollection("notes")
+```
+
+5. Insert Sample Notes with `userEmail`
+
+```js
+db.notes.insertMany([
+  {
+    title: "First Note",
+    content: "This is Alice's note.",
+    userEmail: "alice@example.com",
+    createdAt: new Date()
+  },
+  {
+    title: "Second Note",
+    content: "This is Bob's note.",
+    userEmail: "bob@example.com",
+    createdAt: new Date()
+  }
+])
+```
+
+6. Query All Notes
+
+```js
+db.notes.find().pretty()
+```
+
+7. Verify Notes for Specific Users
+
+- Alice:
+
+```js
+db.notes.find({ userEmail: "alice@example.com" }).pretty()
+```
+
+- Bob:
+
+```js
+db.notes.find({ userEmail: "bob@example.com" }).pretty()
+```
+
+8. Create an Index on `userEmail` for faster queries
+
+```js
+db.notes.createIndex({ userEmail: 1 })
+```
+
+9. Add a New Note
+
+```js
+db.notes.insertOne({
+  title: "Third Note",
+  content: "This is another note for Alice.",
+  userEmail: "alice@example.com",
+  createdAt: new Date()
+})
+```
+
+10. Update a Note (by `_id`)
+
+```js
+db.notes.updateOne(
+  { _id: ObjectId("your_note_id") },
+  { $set: { title: "Updated Title" } }
+)
+```
+
+*(Replace `"your_note_id"` with the actual `_id`.)*
+
+
+11. Delete a Note (by `_id`)
+
+```js
+db.notes.deleteOne({ _id: ObjectId("your_note_id") })
+```
+
+12. Count Total Notes
+
+```js
+db.notes.countDocuments()
+```
+
+13. Drop the Collection (if needed)
+
+```js
+db.notes.drop()
+```
+
+14. Create a User with Permissions
+
+```js
+use admin
+db.createUser({
+  user: "notepadUser",
+  pwd: "securePassword",
+  roles: [ { role: "readWrite", db: "notepad" } ]
+})
+```
+
+15. Authenticate as the User
+
+```bash
+mongosh -u notepadUser -p --authenticationDatabase notepad
+```

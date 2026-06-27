@@ -1,15 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import NavBar from './components/NavBar';
+import AuthForm from './components/AuthForm';
 
 const API = 'http://localhost:5000/notes';
 
-// ✅ API calls
+// ✅ API calls (now with userEmail parameter)
 const api = {
-  getAll:  ()           => fetch(API).then(r => r.json()),
-  create:  (data)       => fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }).then(r => r.json()),
-  update:  (id, data)   => fetch(`${API}/${id}`, { method: 'PUT',  headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }).then(r => r.json()),
-  delete:  (id)         => fetch(`${API}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+  getAll:  (userEmail)           => fetch(`${API}?userEmail=${userEmail}`).then(r => r.json()),
+  create:  (data, userEmail)     => fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({...data, userEmail}) }).then(r => r.json()),
+  update:  (id, data, userEmail) => fetch(`${API}/${id}?userEmail=${userEmail}`, { method: 'PUT',  headers: {'Content-Type':'application/json'}, body: JSON.stringify({...data, userEmail}) }).then(r => r.json()),
+  delete:  (id, userEmail)       => fetch(`${API}/${id}?userEmail=${userEmail}`, { method: 'DELETE' }).then(r => r.json()),
 };
+
+// ✅ LocalStorage functions for Auth
+function getSavedUsers() {
+  try {
+    const raw = window.localStorage.getItem('notepad_users');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveUsers(users) {
+  window.localStorage.setItem('notepad_users', JSON.stringify(users));
+}
+
+function getSavedSession() {
+  try {
+    const raw = window.localStorage.getItem('notepad_session');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(user) {
+  window.localStorage.setItem('notepad_session', JSON.stringify(user));
+}
+
+function clearSession() {
+  window.localStorage.removeItem('notepad_session');
+}
 
 // Toast Notification Component
 function Toast({ message, type, onClose }) {
@@ -26,6 +59,21 @@ function Toast({ message, type, onClose }) {
 }
 
 export default function App() {
+  // ✅ Page routing
+  const [page, setPage] = useState('home');
+  
+  // ✅ Auth state
+  const [authUser, setAuthUser] = useState(getSavedSession());
+  const [authData, setAuthData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [authErrors, setAuthErrors] = useState({});
+
+  // ✅ Notes state
   const [notes, setNotes]         = useState([]);
   const [title, setTitle]         = useState('');
   const [content, setContent]     = useState('');
@@ -36,7 +84,7 @@ export default function App() {
   const [toast, setToast]         = useState(null);
   const [favorites, setFavorites] = useState([]);
 
-  // Keyboard shortcuts
+  // ✅ Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -50,21 +98,136 @@ export default function App() {
     
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [title, content, editId]);
+  }, [title, content, editId, loading]);
 
-  // Load notes on mount
-  useEffect(() => { loadNotes(); }, []);
+  // ✅ Load notes on mount and when user changes
+  useEffect(() => { 
+    if (authUser) {
+      loadNotes();
+    }
+  }, [authUser]);
+
+  // ✅ Persist auth session
+  useEffect(() => {
+    if (authUser) {
+      saveSession(authUser);
+    }
+  }, [authUser]);
 
   async function loadNotes() {
     setLoading(true);
     try {
-      const data = await api.getAll();
+      // Only load if user is logged in
+      if (!authUser) {
+        setNotes([]);
+        return;
+      }
+      const data = await api.getAll(authUser.email);
       setNotes(data);
     } catch (err) {
       showToast('Failed to load notes', 'error');
     } finally {
       setLoading(false);
     }
+  }
+
+  // ✅ Auth Handlers
+  function handleAuthChange(e) {
+    const { name, value } = e.target;
+    setAuthData({ ...authData, [name]: value });
+  }
+
+  function validateSignUp() {
+    const errors = {};
+    if (!authData.firstName.trim()) errors.firstName = 'First name is required.';
+    if (!authData.lastName.trim()) errors.lastName = 'Last name is required.';
+    if (!authData.email.trim()) {
+      errors.email = 'Email is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(authData.email)) {
+      errors.email = 'Enter a valid email.';
+    }
+    if (!authData.password) {
+      errors.password = 'Password is required.';
+    } else if (authData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters.';
+    }
+    if (!authData.confirmPassword) {
+      errors.confirmPassword = 'Confirm password is required.';
+    } else if (authData.password !== authData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match.';
+    }
+    return errors;
+  }
+
+  function handleSignUp() {
+    const errors = validateSignUp();
+    if (Object.keys(errors).length > 0) {
+      setAuthErrors(errors);
+      return;
+    }
+
+    const users = getSavedUsers();
+    const existing = users.find((user) => user.email.toLowerCase() === authData.email.toLowerCase());
+    if (existing) {
+      setAuthErrors({ form: 'Account with this email already exists.' });
+      return;
+    }
+
+    const newUser = {
+      firstName: authData.firstName.trim(),
+      lastName: authData.lastName.trim(),
+      email: authData.email.trim().toLowerCase(),
+      password: authData.password,
+    };
+
+    users.push(newUser);
+    saveUsers(users);
+    setAuthErrors({});
+    setAuthUser(newUser);
+    setPage('home');
+    setAuthData({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
+    showToast('✅ Account created! Welcome aboard!', 'success');
+  }
+
+  function handleLogin() {
+    const errors = {};
+    if (!authData.email.trim()) errors.email = 'Email is required.';
+    if (!authData.password) errors.password = 'Password is required.';
+
+    if (Object.keys(errors).length > 0) {
+      setAuthErrors(errors);
+      return;
+    }
+
+    const users = getSavedUsers();
+    const user = users.find(
+      (item) => item.email.toLowerCase() === authData.email.trim().toLowerCase()
+    );
+
+    if (!user || user.password !== authData.password) {
+      setAuthErrors({ form: 'Invalid email or password.' });
+      return;
+    }
+
+    setAuthErrors({});
+    setAuthUser(user);
+    setPage('home');
+    setAuthData({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
+    showToast(`🎉 Welcome back, ${user.firstName}!`, 'success');
+  }
+
+  function handleLogout() {
+    clearSession();
+    setAuthUser(null);
+    setNotes([]); // Clear notes on logout
+    setPage('home');
+    showToast('👋 Logged out successfully.', 'info');
+  }
+
+  function handleAuthSwitch(target) {
+    setAuthErrors({});
+    setAuthData({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
+    setPage(target);
   }
 
   // Filtered and sorted notes
@@ -90,10 +253,10 @@ export default function App() {
     setLoading(true);
     try {
       if (editId) {
-        await api.update(editId, { title, content });
+        await api.update(editId, { title, content }, authUser.email);
         showToast('✅ Note updated successfully!', 'success');
       } else {
-        await api.create({ title, content });
+        await api.create({ title, content }, authUser.email);
         showToast('✅ Note created successfully!', 'success');
       }
       setTitle('');
@@ -121,7 +284,7 @@ export default function App() {
     
     setLoading(true);
     try {
-      await api.delete(id);
+      await api.delete(id, authUser.email);
       showToast('🗑️ Note deleted successfully!', 'success');
       loadNotes();
     } catch (err) {
@@ -160,8 +323,9 @@ export default function App() {
 
 
   return (
-    <div className="app-container">
-      {/* Toast Notifications */}
+    <div className="app-wrapper">
+      <NavBar page={page} onNavigate={setPage} authUser={authUser} onLogout={handleLogout} />
+
       {toast && (
         <Toast 
           message={toast.message} 
@@ -170,19 +334,21 @@ export default function App() {
         />
       )}
 
-      {/* Header */}
-      <div className="app-header">
-        <h1 className="app-title">📓 My Awesome Notepad</h1>
-        <p className="app-subtitle">Create, Edit & Organize Your Notes ✨</p>
-        
-        {/* Statistics */}
-        <div className="stats-bar">
-          <div className="stat-item">
-            <span className="stat-icon">📝</span>
-            <div className="stat-info">
-              <div className="stat-label">Total Notes</div>
-              <div className="stat-value">{notes.length}</div>
-            </div>
+      {/* ✅ Home Page - Only for logged-in users */}
+      {page === 'home' && authUser && (
+        <div className="app-container">
+          <div className="app-header">
+            <h1 className="app-title">📓 My Awesome Notepad</h1>
+            <p className="app-subtitle">Create, Edit & Organize Your Notes ✨</p>
+            
+            {/* Statistics */}
+            <div className="stats-bar">
+              <div className="stat-item">
+                <span className="stat-icon">📝</span>
+                <div className="stat-info">
+                  <div className="stat-label">Total Notes</div>
+                  <div className="stat-value">{notes.length}</div>
+                </div>
           </div>
           <div className="stat-item">
             <span className="stat-icon">📊</span>
@@ -206,154 +372,220 @@ export default function App() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Form Card */}
-      <div className="form-card">
-        <div className="form-header">
-          <h2 className="form-title">
-            {editId ? '✏️ Update Your Note' : '✨ Create New Note'}
-          </h2>
-          {editId && <span className="edit-badge">EDITING</span>}
-        </div>
-
-        <input
-          className="form-input"
-          placeholder="Enter note title..."
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          disabled={loading}
-        />
-
-        {/* Character Counter */}
-        <div className="textarea-wrapper">
-          <textarea
-            className="form-textarea"
-            placeholder="Write your thoughts, ideas, and important information..."
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            disabled={loading}
-            rows={5}
-          />
-          <div className="char-counter">
-            <span>{currentChars} chars</span>
-            <span>{currentWords} words</span>
           </div>
-        </div>
 
-        <div className="button-group">
-          <button 
-            className="btn btn-primary" 
-            onClick={handleSave}
-            disabled={loading}
-          >
-            {loading ? '⏳ Saving...' : (editId ? '💾 Update Note' : '➕ Add Note')}
-          </button>
-          {editId && (
-            <button 
-              className="btn btn-secondary" 
-              onClick={handleCancel}
+          {/* Form Card */}
+            {/* Form Card */}
+          <div className="form-card">
+            <div className="form-header">
+              <h2 className="form-title">
+                {editId ? '✏️ Update Your Note' : '✨ Create New Note'}
+              </h2>
+              {editId && <span className="edit-badge">EDITING</span>}
+            </div>
+
+            <input
+              className="form-input"
+              placeholder="Enter note title..."
+              value={title}
+              onChange={e => setTitle(e.target.value)}
               disabled={loading}
-            >
-              ✕ Cancel
-            </button>
-          )}
-        </div>
-        <p className="keyboard-hint">💡 Tip: Press Ctrl+S to save, Esc to cancel</p>
-      </div>
+            />
 
-      {/* Search and Sort */}
-      <div className="controls-section">
-        <div className="search-box">
-          <span className="search-icon">🔍</span>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search notes by title or content..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button 
-              className="clear-search"
-              onClick={() => setSearchTerm('')}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+            {/* Character Counter */}
+            <div className="textarea-wrapper">
+              <textarea
+                className="form-textarea"
+                placeholder="Write your thoughts, ideas, and important information..."
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                disabled={loading}
+                rows={5}
+              />
+              <div className="char-counter">
+                <span>{currentChars} chars</span>
+                <span>{currentWords} words</span>
+              </div>
+            </div>
 
-        <div className="sort-box">
-          <label htmlFor="sort">Sort by:</label>
-          <select 
-            id="sort"
-            className="sort-select" 
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-          >
-            <option value="date">📅 Newest First</option>
-            <option value="oldest">📆 Oldest First</option>
-            <option value="title">🔤 Alphabetical</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Notes Section */}
-      <div className="notes-section">
-        {sortedNotes.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📝</div>
-            <p className="empty-text">
-              {searchTerm ? `No notes found for "${searchTerm}"` : 'No notes yet! Create your first note to get started.'}
-            </p>
-          </div>
-        ) : (
-          <div className="notes-grid">
-            <h2 className="notes-title">
-              📚 Your Notes ({sortedNotes.length})
-              {searchTerm && ` - Searching for "${searchTerm}"`}
-            </h2>
-            <div className="notes-container">
-              {sortedNotes.map((note, idx) => (
-                <div 
-                  key={note._id} 
-                  className={`note-card ${favorites.includes(note._id) ? 'favorite' : ''}`}
-                  style={{ animationDelay: `${idx * 0.05}s` }}
+            <div className="button-group">
+              <button 
+                className="btn btn-primary" 
+                onClick={handleSave}
+                disabled={loading}
+              >
+                {loading ? '⏳ Saving...' : (editId ? '💾 Update Note' : '➕ Add Note')}
+              </button>
+              {editId && (
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleCancel}
+                  disabled={loading}
                 >
-                  <div className="note-header">
-                    <div className="title-section">
-                      <h3 className="note-title">{note.title}</h3>
-                      <button 
-                        className="favorite-btn"
-                        onClick={() => toggleFavorite(note._id)}
-                        title={favorites.includes(note._id) ? 'Remove from favorites' : 'Add to favorites'}
-                      >
-                        {favorites.includes(note._id) ? '⭐' : '☆'}
-                      </button>
-                    </div>
-                    <div className="note-date">
-                      {new Date(note.createdAt).toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric',
-                        year: new Date(note.createdAt).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-                      })}
-                    </div>
-                  </div>
-                  <p className="note-content">{note.content}</p>
-                  <div className="note-stats">
-                    <span className="note-stat">📝 {note.content.split(/\s+/).length} words</span>
-                    <span className="note-stat">🔤 {note.content.length} chars</span>
-                  </div>
-                  <div className="note-actions">
-                    <button className="btn btn-edit" onClick={() => handleEdit(note)}>✏️ Edit</button>
-                    <button className="btn btn-delete" onClick={() => handleDelete(note._id)}>🗑️ Delete</button>
-                  </div>
-                </div>
-              ))}
+                  ✕ Cancel
+                </button>
+              )}
+            </div>
+            <p className="keyboard-hint">💡 Tip: Press Ctrl+S to save, Esc to cancel</p>
+          </div>
+
+          {/* Search and Sort */}
+          <div className="controls-section">
+            <div className="search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search notes by title or content..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button 
+                  className="clear-search"
+                  onClick={() => setSearchTerm('')}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="sort-box">
+              <label htmlFor="sort">Sort by:</label>
+              <select 
+                id="sort"
+                className="sort-select" 
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+              >
+                <option value="date">📅 Newest First</option>
+                <option value="oldest">📆 Oldest First</option>
+                <option value="title">🔤 Alphabetical</option>
+              </select>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Notes Section */}
+          <div className="notes-section">
+            {sortedNotes.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">📝</div>
+                <p className="empty-text">
+                  {searchTerm ? `No notes found for "${searchTerm}"` : 'No notes yet! Create your first note to get started.'}
+                </p>
+              </div>
+            ) : (
+              <div className="notes-grid">
+                <h2 className="notes-title">
+                  📚 Your Notes ({sortedNotes.length})
+                  {searchTerm && ` - Searching for "${searchTerm}"`}
+                </h2>
+                <div className="notes-container">
+                  {sortedNotes.map((note, idx) => (
+                    <div 
+                      key={note._id} 
+                      className={`note-card ${favorites.includes(note._id) ? 'favorite' : ''}`}
+                      style={{ animationDelay: `${idx * 0.05}s` }}
+                    >
+                      <div className="note-header">
+                        <div className="title-section">
+                          <h3 className="note-title">{note.title}</h3>
+                          <button 
+                            className="favorite-btn"
+                            onClick={() => toggleFavorite(note._id)}
+                            title={favorites.includes(note._id) ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            {favorites.includes(note._id) ? '⭐' : '☆'}
+                          </button>
+                        </div>
+                        <div className="note-date">
+                          {new Date(note.createdAt).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: new Date(note.createdAt).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                          })}
+                        </div>
+                      </div>
+                      <p className="note-content">{note.content}</p>
+                      <div className="note-stats">
+                        <span className="note-stat">📝 {note.content.split(/\s+/).length} words</span>
+                        <span className="note-stat">🔤 {note.content.length} chars</span>
+                      </div>
+                      <div className="note-actions">
+                        <button className="btn btn-edit" onClick={() => handleEdit(note)}>✏️ Edit</button>
+                        <button className="btn btn-delete" onClick={() => handleDelete(note._id)}>🗑️ Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Home Page - Landing for non-logged-in users */}
+      {page === 'home' && !authUser && (
+        <div className="landing-page">
+          <div className="landing-hero">
+            <h1 className="landing-title">📓 My Awesome Notepad</h1>
+            <p className="landing-subtitle">
+              Create, organize, and manage all your notes in one beautiful place.
+            </p>
+            <p className="landing-features">
+              ✨ Beautiful Design • 🔍 Smart Search • ⭐ Favorites • 💬 Real-time Sync
+            </p>
+            <div className="landing-buttons">
+              <button className="btn btn-primary" onClick={() => setPage('signup')}>
+                ➕ Create Account
+              </button>
+              <button className="btn btn-secondary" onClick={() => setPage('login')}>
+                🔐 Login
+              </button>
+            </div>
+          </div>
+          <div className="landing-demo">
+            <div className="demo-card">
+              <h3>✍️ Write</h3>
+              <p>Quickly jot down your thoughts and ideas.</p>
+            </div>
+            <div className="demo-card">
+              <h3>🔍 Find</h3>
+              <p>Search through all your notes instantly.</p>
+            </div>
+            <div className="demo-card">
+              <h3>⭐ Organize</h3>
+              <p>Mark favorites and sort by date or title.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Login Page */}
+      {page === 'login' && (
+        <AuthForm
+          type="login"
+          data={authData}
+          errors={authErrors}
+          loading={loading}
+          onChange={handleAuthChange}
+          onSubmit={handleLogin}
+          onSwitch={handleAuthSwitch}
+        />
+      )}
+
+      {/* ✅ Sign Up Page */}
+      {page === 'signup' && (
+        <AuthForm
+          type="signup"
+          data={authData}
+          errors={authErrors}
+          loading={loading}
+          onChange={handleAuthChange}
+          onSubmit={handleSignUp}
+          onSwitch={handleAuthSwitch}
+        />
+      )}
     </div>
   );
 }
